@@ -1,0 +1,9 @@
+# Ignore Directory
+bin/
+conf/
+data/
+log/
+shell/
+
+# Ignore File
+*.bak
