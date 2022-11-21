@@ -1,0 +1,15 @@
+# Ignore Directory
+bin/
+conf/
+data/
+log/
+shell/
+php/
+node/logs
+node/node_modules
+
+# Ignore File
+*.bak
+*.o
+service-account.json
+
