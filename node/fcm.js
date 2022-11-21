@@ -49,8 +49,8 @@ function getAccessToken()
  */
 function sendFcmMessage(fcmMessage)
 {
-   getAccessToken().then(function(accessToken)
-   {
+    getAccessToken().then(function(accessToken)
+    {
         const options = {
             hostname: HOST,
             path: PATH,
@@ -85,35 +85,37 @@ function sendFcmMessage(fcmMessage)
  * Construct a JSON object that will be used to customize
  * the messages sent to iOS and Android devices.
  */
-function buildOverrideMessage(topic, message)
+function buildOverrideMessage(topic, message, callback)
 {
-    const fcmMessage = buildCommonMessage(topic, message);
-    const apnsOverride = {
-        payload: {
-            'aps': {
-                'badge': 1,
-                'sound': 'default',
-                'content_available':true
-            }
-        },
-        headers: {
-            // "apns-push-type": "background",
-            "apns-priority": "10",
-        },
-    };
- 
-    const androidOverride = {
-        "priority": "high",
-        // 'notification': {
-        //     "android_channel_id" : topic,
-    //         'click_action': 'android.intent.action.MAIN'
-        // }
-    };
- 
-    fcmMessage['message']['android'] = androidOverride;
-    fcmMessage['message']['apns'] = apnsOverride;
- 
-    return fcmMessage;
+    buildCommonMessage(topic, message, (fcmMessage) =>
+    {
+        const apnsOverride = {
+            payload: {
+                'aps': {
+                    'badge': 1,
+                    'sound': 'default',
+                    'content_available':true
+                }
+            },
+            headers: {
+                // "apns-push-type": "background",
+                "apns-priority": "10",
+            },
+        };
+    
+        const androidOverride = {
+            "priority": "high",
+            // 'notification': {
+            //     "android_channel_id" : topic,
+        //         'click_action': 'android.intent.action.MAIN'
+            // }
+        };
+    
+        fcmMessage['message']['android'] = androidOverride;
+        fcmMessage['message']['apns'] = apnsOverride;
+        
+        callback(fcmMessage);
+    });
 }
  
 /**
@@ -121,7 +123,7 @@ function buildOverrideMessage(topic, message)
  * common parts of a notification message that will be sent
  * to any app instance subscribed to the news topic.
  */
-function buildCommonMessage(topic, message)
+function buildCommonMessage(topic, message, callback)
 {
     var topics = topic.split('-');
 
@@ -130,7 +132,8 @@ function buildCommonMessage(topic, message)
         child_process.exec('/usr/local/php8/bin/php /home/www/MQTTPusher/php/get_fcm_token.php ' + topics[3], (err, sout, serr) =>
         {
             var token = sout;
-            return {
+
+            callback({
                 'message': {
                     'token': token,
                     'notification': {
@@ -142,14 +145,14 @@ function buildCommonMessage(topic, message)
                         'message': JSON.stringify(message),
                     },
                 }
-            }
+            });
         });
     }
     else
     {
         if ( topics.length == 4 && topics[1] == 'PhotoApp' && topics[2] == 'team' && topics[3] == 'observer' )
         {
-            return {
+            callback({
                 'message': {
                     'topic': topic,
                     'notification': {
@@ -161,11 +164,11 @@ function buildCommonMessage(topic, message)
                         'message': JSON.stringify(message),
                     },
                 }
-            }
+            });
         }
         else
         {
-            return {
+            callback({
                 'message': {
                     'topic': topic,
                     'notification': {
@@ -180,7 +183,7 @@ function buildCommonMessage(topic, message)
                         }),
                     },
                 }
-            }
+            });
         }
     }
 }
@@ -193,15 +196,16 @@ if ( process.argv.length == 4 )
     topic = topic.replace(/\//g, '-');
 
     try
-	{
-        //console.log(buildOverrideMessage(topic, message));
-		sendFcmMessage(buildOverrideMessage(topic, message));
-	}
-	catch (err)
-	{
-		logger.info('sendFcmMessage error');
+    {
+        buildOverrideMessage(topic, message, (fcmMessage) =>
+        {
+            sendFcmMessage(fcmMessage);
+        });
+    }
+    catch (err)
+    {
         logger.info(err);
-	}
+    }
 }
 else
 {
