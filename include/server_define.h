@@ -47,7 +47,8 @@
  ******************************************************************************/
 
 #define _PROC_RECEIVE_PROCESS_          1
-#define _PROC_PUSH_PROCESS_             2
+#define _PROC_PUSH_PROCESS_V1_          2
+#define _PROC_PUSH_PROCESS_V2_          3
 
 /******************************************************************************
  * Variable Types Define....

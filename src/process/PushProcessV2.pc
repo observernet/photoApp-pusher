@@ -1,0 +1,490 @@
+/*****************************************************
+ * 프로그램ID	: PushProcessV2.pc
+ * 프로그램명	: 큐를 읽어서 메세지는 푸쉬한다 (Ver2)
+ *****************************************************/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <errno.h>
+
+#include <json/json.h>
+
+#include <ft_common.h>
+#include <ora_common.h>
+
+#include <MQTTPusher_interface.h>
+#include "PushProcessV2.h"
+
+/*************************************************************************************
+ * 구현 시작..
+ *************************************************************************************/
+ 
+int main(int argc, char** argv)
+{
+	FILE* fp;
+    char filename[256], readbuf[MAX_BUFFER];
+    int len, linenum, finish_line;
+
+	int ptr;
+	MQTT_DATA mdata;
+
+	SetProgramName(argv[0]);
+	
+	/* 서버를 초기화 한다. */
+	InitServer();
+
+	/* 이전에 처리한 라인넘버를 가져온다 */
+    finish_line = GetReadLineNum();
+	
+    /* 파일을 연다 */
+    sprintf(filename, "%s/%s/v2.%08d.que", mdb->program_home, DATA_PATH, mdb->system_date);
+	while ( 1 )
+	{
+		if ( (fp = fopen(filename, "r")) )
+			break;
+		
+		if ( errno != ENOENT )
+		{
+			Log("main: 파일여는 도중 에러가 발생하였습니다 filename[%s] errno[%d]\n", filename, errno);
+			interrupt(0);
+		}
+		sleep(10);
+	}
+
+    linenum = 0;
+	while ( 1 )
+	{
+		memset(readbuf, 0x00, MAX_BUFFER);
+        if ( fgets(readbuf, MAX_BUFFER, fp) )
+        {
+            linenum++;
+            if ( linenum <= finish_line) continue;
+
+            len = strlen(readbuf);
+            if ( readbuf[len-1] == '\n' ) readbuf[len-1] = 0;
+
+            /* 읽어온 데이타를 파싱한다 */
+			memset(&mdata, 0x00, sizeof(MQTT_DATA));
+			ptr = get_next_token(readbuf, 0, mdata.topic, MPI_SEPERATOR);
+			ptr = get_next_token(readbuf, ptr, mdata.message, MPI_SEPERATOR);
+
+			/* 토픽을 파싱한다 */
+			if ( ParseTopic(&mdata) == -1 )
+			{
+				Log("main: 올바르지 않은 토픽!! [%s]\n", mdata.topic);
+				continue;
+			}
+
+			/* 메세지를 파싱한다 */
+			if ( ParseMessage(&mdata) == -1 )
+			{
+				Log("main: 올바르지 않은 메세지!! [%s]\n", mdata.message);
+				continue;
+			}
+
+			/* 전체가 아닌 개인전송은 토큰과 언어구분을 가져온다 */
+			if ( strcmp(mdata.topic_type, "inout") == 0 || strcmp(mdata.topic_type, "like") == 0 )
+			{
+				if ( GetTokenAndUserLang(&mdata) == -1 )
+					continue;
+			}
+
+			/* FCM에 보낼 메세지를 생성한다 */
+			MakeFCMMessage(&mdata);
+
+			/* FCM에 Push한다 */
+			PushDataToFCM(&mdata);
+
+			/* 라인넘버를 기록한다 */
+            WriteReadLineNum(linenum);
+        }
+        else
+            usleep(100000);
+	}
+    fclose(fp);
+	
+	interrupt(0);
+	
+	exit(EXIT_SUCCESS);
+}
+
+/**
+ * FCM 메세지를 만든다
+ */
+int MakeFCMMessage(MQTT_DATA* mdata)
+{
+	char title[128], body[128];
+
+	memset(title, 0x00, 128);
+	memset(body, 0x00, 128);
+
+	// 공지, 안내, 업데이트, 이벤트, 팀알림 ==> {"title": "제목", "body": "내용", "link": "게시글링크"}
+	// 입출금 ==> {"title": "I or O", "body": "OBSR수량", "link": "txhash"}
+	// 좋아요 ==> {"title": "like", "body": "누가", "link": "스냅키}
+
+
+	// 토픽구분에 맞게 제목을 세팅한다.
+	if ( strcmp(mdata->topic_type, "announce") == 0 )
+	{
+		if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 공지가 게시됐어요!");
+		else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Ada pengumuman baru!");
+		else											 sprintf(title, "A new notice has been posted!");
+	}
+	else if ( strcmp(mdata->topic_type, "notice") == 0 )
+	{
+		if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 안내가 게시됐어요!");
+		else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Ada informasi baru!");
+		else											 sprintf(title, "A new information has been posted!");
+	}
+	else if ( strcmp(mdata->topic_type, "update") == 0 )
+	{
+		if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 업데이트가 있어요!");
+		else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Pembaruan baru tersedia!");
+		else											 sprintf(title, "A new update has been made!");
+	}
+	else if ( strcmp(mdata->topic_type, "event") == 0 )
+	{
+		if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 이벤트가 있어요!");
+		else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Event baru tersedia!");
+		else											 sprintf(title, "A new event has been made!");
+	}
+	else if ( strcmp(mdata->topic_type, "team") == 0 )
+	{
+		if ( strcmp(mdata->topic_type2, "observer") == 0 )
+		{
+			if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 이벤트가 있어요!");
+			else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Event baru tersedia!");
+			else											 sprintf(title, "A new event has been made!");
+		}
+	}
+	else if ( strcmp(mdata->topic_type, "inout") == 0 )
+	{
+		if ( strcmp(mdata->message_title, "I") == 0 )
+		{
+			if ( strcmp(mdata->user_lang, "kr") == 0 )
+			{
+				sprintf(title, "입금 알림");
+				sprintf(body, "%s OBSR이 입금되었습니다.", mdata->message_body);
+			}
+			else if ( strcmp(mdata->user_lang, "id") == 0 )
+			{
+				sprintf(title, "Deposit notification");
+				sprintf(body, "%s OBSR telah disetorkan.", mdata->message_body);
+			}
+			else
+			{
+				sprintf(title, "Deposit notification");
+				sprintf(body, "%s OBSR has been deposited.", mdata->message_body);
+			}
+		}
+		else if ( strcmp(mdata->message_title, "O") == 0 )
+		{
+			if ( strcmp(mdata->user_lang, "kr") == 0 )
+			{
+				sprintf(title, "출금 알림");
+				sprintf(body, "%s OBSR이 출금되었습니다.", mdata->message_body);
+			}
+			else if ( strcmp(mdata->user_lang, "id") == 0 )
+			{
+				sprintf(title, "Withdrawal notification");
+				sprintf(body, "%s OBSR telah ditarik.", mdata->message_body);
+			}
+			else
+			{
+				sprintf(title, "Withdrawal notification");
+				sprintf(body, "%s OBSR has been withdrawn.", mdata->message_body);
+			}
+		}
+	}
+	else if ( strcmp(mdata->topic_type, "like") == 0 )
+	{
+		if ( strcmp(mdata->user_lang, "kr") == 0 )
+		{
+			sprintf(title, "좋아요");
+			sprintf(body, "%s 님이 당신의 스냅을 좋아합니다.", mdata->message_body);
+		}
+		else if ( strcmp(mdata->user_lang, "id") == 0 )
+		{
+			sprintf(title, "Suka");
+			sprintf(body, "%s menyukai Snap Anda.", mdata->message_body);
+		}
+		else
+		{
+			sprintf(title, "Like");
+			sprintf(body, "%s like your snaps.", mdata->message_body);
+		}
+	}
+
+	// FCM에 전송할 메세지를 세팅한다
+	if ( strlen(body) > 0 )
+	{
+		sprintf(mdata->fcm_message, "{"
+									"\"title\":\"%s\","
+									"\"body\":\"%s\","
+									"\"link\":\"%s\""
+									"}",
+									title,
+									body,
+									mdata->message_link
+		);
+	}
+	else
+	{
+		sprintf(mdata->fcm_message, "{"
+									"\"title\":\"%s\","
+									"\"body\":\"%s\","
+									"\"link\":\"%s\""
+									"}",
+									title,
+									mdata->message_title,
+									mdata->message_link
+		);
+	}
+
+	return (0);
+}
+
+/**
+ * FCM에 데이타를 푸쉬한다
+ */
+int PushDataToFCM(MQTT_DATA* mdata)
+{
+    char buffer[MAX_BUFFER*2];
+	
+	sprintf(buffer, "%s %s_%s.js '%s' '%s' '%s'", NODE, FCM_PREFIX, mdata->topic_appname, mdata->topic, mdata->fcm_message, mdata->fcm_token);
+	system(buffer);
+
+	Log("PushDataToFCM: %s\n", buffer);
+
+    return (0);
+}
+
+/**
+ * 토픽을 파싱한디
+ */
+int ParseTopic(MQTT_DATA* mdata)
+{
+	if ( mdata->topic[0] != '/' ) return (-1);
+	
+	int ptr = 1;
+	ptr = get_next_token(mdata->topic, ptr, mdata->topic_appname, '/');
+	if ( ptr <= 0 || strlen(mdata->topic_appname) == 0 ) return (-1);
+	
+	ptr = get_next_token(mdata->topic, ptr, mdata->topic_type, '/');
+	if ( ptr <= 0 || strlen(mdata->topic_type) == 0 ) return (-1);
+	
+	if ( strcmp(mdata->topic_type, "inout") == 0 || strcmp(mdata->topic_type, "like") == 0 )
+	{
+		ptr = get_next_token(mdata->topic, ptr, mdata->topic_userkey, '/');
+		if ( ptr <= 0 || strlen(mdata->topic_userkey) == 0 ) return (-1);
+	}
+	else
+	{
+		if ( strcmp(mdata->topic_type, "team") == 0 )
+		{
+			ptr = get_next_token(mdata->topic, ptr, mdata->topic_type2, '/');
+			if ( ptr <= 0 || strlen(mdata->topic_type2) == 0 ) return (-1);
+		}
+
+		ptr = get_next_token(mdata->topic, ptr, mdata->topic_lang, '/');
+		if ( ptr <= 0 || strlen(mdata->topic_lang) == 0 ) return (-1);
+	}
+	
+	return (0);
+}
+
+/**
+ * 메세지를 파싱한디
+ */
+int ParseMessage(MQTT_DATA* mdata)
+{
+	json_object *myobj, *dval;
+
+	myobj = json_tokener_parse(mdata->message);
+	if ( myobj == NULL ) return (-1);
+
+	dval = json_object_object_get(myobj, "title");
+	if ( dval ) strcpy(mdata->message_title, json_object_get_string(dval));
+
+	dval = json_object_object_get(myobj, "body");
+	if ( dval ) strcpy(mdata->message_body, json_object_get_string(dval));
+
+	dval = json_object_object_get(myobj, "link");
+	if ( dval ) strcpy(mdata->message_link, json_object_get_string(dval));
+
+	json_object_put(myobj);
+	return (0);
+}
+
+/**
+ * 사용자키로 FCM토큰과 사용언어를 가져온다
+ */
+int GetTokenAndUserLang(MQTT_DATA* mdata)
+{
+	if ( strlen(mdata->topic_userkey) != 16 )
+	{
+		Log("GetTokenAndUserLang: 유저키가 할당되지 않았습니다\n");
+		return (-1);
+	}
+
+	char lang;
+
+	/* 오라클사용 등록 */
+	struct sqlca sqlca;
+	EXEC SQL CONTEXT USE :ctx;
+
+	/* FCM토큰을 가져온다 */
+	EXEC SQL
+		SELECT TOKEN INTO :mdata->fcm_token
+		FROM FCM_TOKEN
+		WHERE APP_NAME = 'PhotoApp'
+		  and USER_KEY = :mdata->topic_userkey
+		  and TOKEN_ERR = 'N';
+	
+	if ( _SQLERROR )
+	{
+		Log("GetTokenAndUserLang: FCM토큰을 가져오는 도중 에러가 발생하였습니다 user_key[%s] sqlcode[%d]\n", mdata->topic_userkey, sqlca.sqlcode);
+		return (-1);
+	}
+	str_trim(mdata->fcm_token, TRIM_ALL);
+
+	if ( strlen(mdata->fcm_token) < 10 )
+	{
+		Log("GetTokenAndUserLang: FCM토큰이 올바르지 않습니다 user_key[%s] fcm_token[%s]\n", mdata->topic_userkey, mdata->fcm_token);
+		return (-1);
+	}
+
+	/* 사용자 언어를 가져온다 */
+	EXEC SQL
+		SELECT NVL(MAIN_LANG, 'K') INTO :lang
+		FROM USER_INFO
+		WHERE USER_KEY = :mdata->topic_userkey;
+	
+	if ( _SQLERROR )
+	{
+		Log("GetTokenAndUserLang: 사용자 언어를 가져오는 도중 에러가 발생하였습니다 user_key[%s] sqlcode[%d]\n", mdata->topic_userkey, sqlca.sqlcode);
+		return (-1);
+	}
+	
+	/* 언어를 세팅한다 */
+	switch ( lang )
+	{
+		case 'K': strcpy(mdata->user_lang, "kr"); break;
+		case 'I': strcpy(mdata->user_lang, "id"); break;
+		default:  strcpy(mdata->user_lang, "en");
+	}
+
+	return (0);
+}
+
+/**
+ * 라인번호를 가져온다
+ */
+int GetReadLineNum()
+{
+	FILE* fp;
+	char filename[256], buff[64];
+	int linenum = 0;
+
+	/* 라인파일을 연다 */
+	sprintf(filename, "%s/%s/%s.%08d.line", mdb->program_home, DATA_PATH, program_name, mdb->system_date);
+	if ( (fp = fopen(filename, "r")) == NULL ) return (0);
+
+	/* 라인번호를 가져온다 */
+	memset(buff, 0x00, 64);
+	if ( fgets(buff, 64, fp) != NULL )
+	{
+		linenum = atoi(buff);
+	}
+	fclose(fp);
+
+	return (linenum);
+}
+
+/**
+ * 라인번호를 기록한다
+ */
+void WriteReadLineNum(int linenum)
+{
+	FILE* fp;
+	char filename[256];
+
+	/* 라인파일을 열고 기록한다 */
+	sprintf(filename, "%s/%s/%s.%08d.line", mdb->program_home, DATA_PATH, program_name, mdb->system_date);
+	fp = fopen(filename, "w");
+	fprintf(fp, "%d", linenum);
+	fclose(fp);
+}
+
+/*************************************************************************************
+ * 초기화함수
+ *************************************************************************************/
+
+/**
+ * 서버를 초기화한다.
+ */ 
+void InitServer()
+{
+	char conf_file_name[256], db_user[30];
+	struct sqlca sqlca;
+	
+	/* 공유메모리를 초기화 한다. */
+	InitCommonMemory();
+
+	/* 설정파일을 연다. */
+	sprintf(conf_file_name, "%s/%s/%s", mdb->program_home, CONF_PATH, SERVER_CONFIG_FILE);
+	if ( !OpenProfile(conf_file_name) )
+	{
+		Log("InitServer: 설정파일을 여는 도중 에러가 발생하였습니다. file[%s] errno[%d]\n", conf_file_name, errno);
+		exit(EXIT_FAILURE);
+	}
+
+	/* DB연결정보를 가져온다 */
+	GetProfileString("MAIN", "ORACLE_USER", db_user);
+
+	/* 설정파일을 닫는다. */
+	CloseProfile();	
+
+	/* DB에 접속한다. */
+	EXEC SQL CONTEXT ALLOCATE :ctx;
+	EXEC SQL CONTEXT USE :ctx;
+	EXEC SQL CONNECT :db_user;
+
+    /* Process를 등록한다. */
+	if ( (process_id = RegistProcess(_PROC_PUSH_PROCESS_V2_)) == -1 )
+	{
+		Log("InitServer: 프로세스 실행에 실패하였습니다.\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	/* 시스널 핸들러 설정 */
+	signal(SIGHUP, SIG_IGN);
+	signal(SIGPIPE, SIG_IGN);
+	signal(SIGINT, interrupt);
+    signal(SIGTERM, interrupt);
+    signal(SIGQUIT, interrupt);
+    
+	Log("InitServer: 서버 초기화! Process Start [%d]..................................\n", process_id);
+}
+
+/**
+ * 서버를 종료한다.
+ */
+void interrupt(int sig)
+{
+	struct sqlca sqlca;
+
+	/* DB연결을 종료한다. */
+	EXEC SQL CONTEXT USE :ctx;
+	EXEC SQL COMMIT WORK RELEASE;
+	EXEC SQL CONTEXT FREE :ctx;
+
+	/* 프로세스 등록 해제 */
+	RemoveProcess(_PROC_PUSH_PROCESS_V2_);
+	DeAttachShm((void*)mdb);
+	
+    exit(EXIT_SUCCESS);
+}

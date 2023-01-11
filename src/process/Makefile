@@ -2,10 +2,10 @@ CSRC_HOME := $(shell if [ "$$CSRC_HOME" != "" ]; then echo $$CSRC_HOME; else ech
 include $(CSRC_HOME)/config.mk
 
 LIBS	=	
-PCPGM	=	
-CPGM	=	ReceiveProcess MQTTPusherCli PushProcess
+PCPGM	=	PushProcessV2
+CPGM	=	ReceiveProcess PushProcessV1 MQTTPusherCliV1 MQTTPusherCliV2
 
-LINK    =   -L$(ORACLE_HOME)/lib/ -lm -lz -lclntsh -lpthread -L$(LIB_PATH) -lMQTTPusher -L$(SCLIB_PATH)/lib -lSC
+LINK    =   -L$(ORACLE_HOME)/lib/ -lm -lz -lclntsh -lpthread -L$(LIB_PATH) -lMQTTPusher -L$(SCLIB_PATH)/lib -lSC -ljson-c
 
 all	:	$(PCPGM) \
 		$(CPGM) \

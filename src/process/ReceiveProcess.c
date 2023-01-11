@@ -121,7 +121,7 @@ int del_epoll(SOCKET fd)
 int ReceiveRequest(SOCKET sockfd)
 {
     int res, rcv, length;
-    char rcvbuf[MAX_BUFFER];
+    char version[8], rcvbuf[MAX_BUFFER], *dataPtr;
 
     FILE* fp;
     char file_name[256];
@@ -151,11 +151,24 @@ int ReceiveRequest(SOCKET sockfd)
     /* 로그를 기록한다 */
     Log("ReceiveRequest: rcvbuf[%d:%s]\n", strlen(rcvbuf), rcvbuf);
 
+	/* 버전정보를 가져온다 (초기는 버전이 없어서 호환성을위해 /로 시작하는지 체크한다)*/
+	if ( rcvbuf[MPI_LENGTH_SIZE] == '/' )
+	{
+		sprintf(version, "%s", "v1");
+		dataPtr = rcvbuf + MPI_LENGTH_SIZE;
+	}
+	else
+	{
+		int ptr = get_next_token(rcvbuf, MPI_LENGTH_SIZE, version, MPI_SEPERATOR);
+		str_trim(version, TRIM_ALL);
+		dataPtr = rcvbuf + ptr;
+	}
+
     /* 큐에 기록한다 */
-    sprintf(file_name, "%s/%s/%08d.que", mdb->program_home, DATA_PATH, mdb->system_date);
+    sprintf(file_name, "%s/%s/%s.%08d.que", mdb->program_home, DATA_PATH, version, mdb->system_date);
     if ( (fp = fopen(file_name, "a+")) )
     {
-        fprintf(fp, "%s\n", rcvbuf + MPI_LENGTH_SIZE);
+        fprintf(fp, "%s\n", dataPtr);
         fclose(fp);
     }
     else

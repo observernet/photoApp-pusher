@@ -17,6 +17,6 @@
  * INTERFACE
  ******************************************************************************/
 
-// PACKET_SIZE + TOPIC + MPI_SEPERATOR + MESSAGE
+// PACKET_SIZE + VERSION + MPI_SEPERATOR + TOPIC + MPI_SEPERATOR + MESSAGE
 
 #endif
