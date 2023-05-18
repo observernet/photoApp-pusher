@@ -49,6 +49,8 @@ function getAccessToken()
  */
 function sendFcmMessage(fcmMessage)
 {
+    logger.info(JSON.stringify(fcmMessage));
+
     getAccessToken().then(function(accessToken)
     {
         const options = {
@@ -180,6 +182,22 @@ function buildCommonMessage(topic, message, callback)
                         'data': {
                             'topic': topic,
                             'message': JSON.stringify(message),
+                        },
+                    }
+                });
+            }
+            else if ( topics.length == 4 && topics[1] == 'PhotoApp' && topics[2] == 'direct' )
+            {
+                callback({
+                    'message': {
+                        'token': message.token,
+                        'notification': {
+                            'title': message.notification.title,
+                            'body': message.notification.body
+                        },
+                        'data': {
+                            'topic': '/PhotoApp/direct/' + topics[3],
+                            'message': JSON.stringify(message.message),
                         },
                     }
                 });

@@ -132,12 +132,12 @@ function buildCommonMessage(topic, message, token)
             'message': {
                 'token': token,
                 'notification': {
-                    'title': message.title,
-                    'body': message.body
+                    'title': message.notification.title,
+                    'body': message.notification.body
                 },
                 'data': {
                     'topic': topic,
-                    'message': JSON.stringify(message),
+                    'message': JSON.stringify(message.message),
                 },
             }
         };
@@ -148,12 +148,12 @@ function buildCommonMessage(topic, message, token)
             'message': {
                 'topic': topic,
                 'notification': {
-                    'title': message.title,
-                    'body': message.body,
+                    'title': message.notification.title,
+                    'body': message.notification.body,
                 },
                 'data': {
                     'topic': topic,
-                    'message': JSON.stringify(message),
+                    'message': JSON.stringify(message.message),
                 },
             }
         };

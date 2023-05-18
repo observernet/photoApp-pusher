@@ -129,49 +129,59 @@ int MakeFCMMessage(MQTT_DATA* mdata)
 	// 토픽구분에 맞게 제목을 세팅한다.
 	if ( strcmp(mdata->topic_type, "announce") == 0 )
 	{
-		if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 공지가 게시됐어요!");
+		if ( strcmp(mdata->topic_lang, "ko") == 0 ) 	 sprintf(title, "새로운 공지가 게시됐어요!");
 		else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Ada pengumuman baru!");
 		else											 sprintf(title, "A new notice has been posted!");
+
+		strcpy(body, mdata->message_title);
 	}
 	else if ( strcmp(mdata->topic_type, "notice") == 0 )
 	{
-		if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 안내가 게시됐어요!");
+		if ( strcmp(mdata->topic_lang, "ko") == 0 ) 	 sprintf(title, "새로운 안내가 게시됐어요!");
 		else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Ada informasi baru!");
 		else											 sprintf(title, "A new information has been posted!");
+
+		strcpy(body, mdata->message_title);
 	}
 	else if ( strcmp(mdata->topic_type, "update") == 0 )
 	{
-		if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 업데이트가 있어요!");
+		if ( strcmp(mdata->topic_lang, "ko") == 0 ) 	 sprintf(title, "새로운 업데이트가 있어요!");
 		else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Pembaruan baru tersedia!");
 		else											 sprintf(title, "A new update has been made!");
+
+		strcpy(body, mdata->message_title);
 	}
 	else if ( strcmp(mdata->topic_type, "event") == 0 )
 	{
-		if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 이벤트가 있어요!");
+		if ( strcmp(mdata->topic_lang, "ko") == 0 ) 	 sprintf(title, "새로운 이벤트가 있어요!");
 		else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Event baru tersedia!");
 		else											 sprintf(title, "A new event has been made!");
+
+		strcpy(body, mdata->message_title);
 	}
 	else if ( strcmp(mdata->topic_type, "team") == 0 )
 	{
 		if ( strcmp(mdata->topic_type2, "observer") == 0 )
 		{
-			if ( strcmp(mdata->topic_lang, "kr") == 0 ) 	 sprintf(title, "새로운 이벤트가 있어요!");
-			else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Event baru tersedia!");
-			else											 sprintf(title, "A new event has been made!");
+			if ( strcmp(mdata->topic_lang, "ko") == 0 ) 	 sprintf(title, "옵저버 팀 알림");
+			else if ( strcmp(mdata->topic_lang, "id") == 0 ) sprintf(title, "Notifikasi Tim Observer");
+			else											 sprintf(title, "Observer Team Notifications");
+
+			strcpy(body, mdata->message_title);
 		}
 	}
 	else if ( strcmp(mdata->topic_type, "inout") == 0 )
 	{
 		if ( strcmp(mdata->message_title, "I") == 0 )
 		{
-			if ( strcmp(mdata->user_lang, "kr") == 0 )
+			if ( strcmp(mdata->user_lang, "ko") == 0 )
 			{
 				sprintf(title, "입금 알림");
 				sprintf(body, "%s OBSR이 입금되었습니다.", mdata->message_body);
 			}
 			else if ( strcmp(mdata->user_lang, "id") == 0 )
 			{
-				sprintf(title, "Deposit notification");
+				sprintf(title, "Notifikasi setor");
 				sprintf(body, "%s OBSR telah disetorkan.", mdata->message_body);
 			}
 			else
@@ -182,14 +192,14 @@ int MakeFCMMessage(MQTT_DATA* mdata)
 		}
 		else if ( strcmp(mdata->message_title, "O") == 0 )
 		{
-			if ( strcmp(mdata->user_lang, "kr") == 0 )
+			if ( strcmp(mdata->user_lang, "ko") == 0 )
 			{
 				sprintf(title, "출금 알림");
 				sprintf(body, "%s OBSR이 출금되었습니다.", mdata->message_body);
 			}
 			else if ( strcmp(mdata->user_lang, "id") == 0 )
 			{
-				sprintf(title, "Withdrawal notification");
+				sprintf(title, "Notifikasi tarik");
 				sprintf(body, "%s OBSR telah ditarik.", mdata->message_body);
 			}
 			else
@@ -201,7 +211,7 @@ int MakeFCMMessage(MQTT_DATA* mdata)
 	}
 	else if ( strcmp(mdata->topic_type, "like") == 0 )
 	{
-		if ( strcmp(mdata->user_lang, "kr") == 0 )
+		if ( strcmp(mdata->user_lang, "ko") == 0 )
 		{
 			sprintf(title, "좋아요");
 			sprintf(body, "%s 님이 당신의 스냅을 좋아합니다.", mdata->message_body);
@@ -219,30 +229,21 @@ int MakeFCMMessage(MQTT_DATA* mdata)
 	}
 
 	// FCM에 전송할 메세지를 세팅한다
-	if ( strlen(body) > 0 )
-	{
-		sprintf(mdata->fcm_message, "{"
-									"\"title\":\"%s\","
-									"\"body\":\"%s\","
-									"\"link\":\"%s\""
-									"}",
-									title,
-									body,
-									mdata->message_link
-		);
-	}
-	else
-	{
-		sprintf(mdata->fcm_message, "{"
-									"\"title\":\"%s\","
-									"\"body\":\"%s\","
-									"\"link\":\"%s\""
-									"}",
-									title,
-									mdata->message_title,
-									mdata->message_link
-		);
-	}
+	sprintf(mdata->fcm_message, "{"
+								"\"notification\":{"
+								"\"title\":\"%s\","
+								"\"body\":\"%s\"},"
+								"\"message\":{"
+								"\"title\":\"%s\","
+								"\"body\":\"%s\","
+								"\"link\":\"%s\"}"
+								"}",
+								title,
+								body,
+								mdata->message_title,
+								mdata->message_body,
+								mdata->message_link
+	);
 
 	return (0);
 }
@@ -372,7 +373,7 @@ int GetTokenAndUserLang(MQTT_DATA* mdata)
 	/* 언어를 세팅한다 */
 	switch ( lang )
 	{
-		case 'K': strcpy(mdata->user_lang, "kr"); break;
+		case 'K': strcpy(mdata->user_lang, "ko"); break;
 		case 'I': strcpy(mdata->user_lang, "id"); break;
 		default:  strcpy(mdata->user_lang, "en");
 	}

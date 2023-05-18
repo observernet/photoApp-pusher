@@ -85,37 +85,36 @@ function sendFcmMessage(fcmMessage)
  * Construct a JSON object that will be used to customize
  * the messages sent to iOS and Android devices.
  */
-function buildOverrideMessage(topic, message, callback)
+function buildOverrideMessage(topic, message, token)
 {
-    buildCommonMessage(topic, message, (fcmMessage) =>
-    {
-        const apnsOverride = {
-            payload: {
-                'aps': {
-                    'badge': 1,
-                    'sound': 'default',
-                    'content_available':true
-                }
-            },
-            headers: {
-                // "apns-push-type": "background",
-                "apns-priority": "10",
-            },
-        };
+    const fcmMessage = buildCommonMessage(topic, message, token);
+
+    const apnsOverride = {
+        payload: {
+            'aps': {
+                'badge': 1,
+                'sound': 'default',
+                'content_available':true
+            }
+        },
+        headers: {
+            // "apns-push-type": "background",
+            "apns-priority": "10",
+        },
+    };
+
+    const androidOverride = {
+        "priority": "high",
+        // 'notification': {
+        //     "android_channel_id" : topic,
+    //         'click_action': 'android.intent.action.MAIN'
+        // }
+    };
+
+    fcmMessage['message']['android'] = androidOverride;
+    fcmMessage['message']['apns'] = apnsOverride;
     
-        const androidOverride = {
-            "priority": "high",
-            // 'notification': {
-            //     "android_channel_id" : topic,
-        //         'click_action': 'android.intent.action.MAIN'
-            // }
-        };
-    
-        fcmMessage['message']['android'] = androidOverride;
-        fcmMessage['message']['apns'] = apnsOverride;
-        
-        callback(fcmMessage);
-    });
+    return fcmMessage;
 }
  
 /**
@@ -123,103 +122,57 @@ function buildOverrideMessage(topic, message, callback)
  * common parts of a notification message that will be sent
  * to any app instance subscribed to the news topic.
  */
-function buildCommonMessage(topic, message, callback)
+function buildCommonMessage(topic, message, token)
 {
-    var topics = topic.split('-');
+    //var topics = topic.split('-');
 
-    if ( topics.length == 4 && (topics[1] == 'PhotoApp' || topics[1] == 'PhotoAppDev') && (topics[2] == 'inout' || topics[2] == 'like') )
+    if ( token.length > 10 )
     {
-        child_process.exec('/usr/local/php8/bin/php /home/www/MQTTPusher/php/get_fcm_token.php ' + topics[3], (err, sout, serr) =>
-        {
-            var token = sout;
-
-            callback({
-                'message': {
-                    'token': token,
-                    'notification': {
-                        'title': message.title,
-                        'body': message.body
-                    },
-                    'data': {
-                        'topic': topic,
-                        'message': JSON.stringify(message),
-                    },
-                }
-            });
-        });
+        return {
+            'message': {
+                'token': token,
+                'notification': {
+                    'title': message.notification.title,
+                    'body': message.notification.body
+                },
+                'data': {
+                    'topic': topic,
+                    'message': JSON.stringify(message.message),
+                },
+            }
+        };
     }
     else
     {
-        if ( topics[1] == 'PhotoAppDev' )
-        {
-            callback({
-                'message': {
+        return {
+            'message': {
+                'topic': topic,
+                'notification': {
+                    'title': message.notification.title,
+                    'body': message.notification.body,
+                },
+                'data': {
                     'topic': topic,
-                    'notification': {
-                        'title': message.title,
-                        'body': message.body,
-                    },
-                    'data': {
-                        'topic': topic,
-                        'message': JSON.stringify(message),
-                    },
-                }
-            });
-        }
-        else
-        {
-            if ( topics.length == 4 && topics[1] == 'PhotoApp' && topics[2] == 'team' && topics[3] == 'observer' )
-            {
-                callback({
-                    'message': {
-                        'topic': topic,
-                        'notification': {
-                            'title': message.title,
-                            'body': message.body,
-                        },
-                        'data': {
-                            'topic': topic,
-                            'message': JSON.stringify(message),
-                        },
-                    }
-                });
+                    'message': JSON.stringify(message.message),
+                },
             }
-            else
-            {
-                callback({
-                    'message': {
-                        'topic': topic,
-                        'notification': {
-                            'title': 'OBSERVER',
-                            'body': message.title
-                        },
-                        'data': {
-                            'topic': topic,
-                            'message': JSON.stringify({
-                                'title': 'OBSERVER',
-                                'body': message.title
-                            }),
-                        },
-                    }
-                });
-            }
-        }
+        };
     }
 }
 
-if ( process.argv.length == 4 )
+if ( process.argv.length == 5 )
 {
     var topic = process.argv[2];
     var message = JSON.parse(process.argv[3]);
+    var token = process.argv[4];
 
     topic = topic.replace(/\//g, '-');
 
     try
     {
-        buildOverrideMessage(topic, message, (fcmMessage) =>
-        {
-            sendFcmMessage(fcmMessage);
-        });
+        const fcmMessage = buildOverrideMessage(topic, message, token);
+        logger.info(JSON.stringify(fcmMessage, null, 2));
+        sendFcmMessage(fcmMessage);
     }
     catch (err)
     {
